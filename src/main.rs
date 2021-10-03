@@ -354,10 +354,10 @@ fn get_orientation(html: &String, team_code: &str) -> HomeOrAway {
     let fragment = Html::parse_fragment(&html);
     let selector = Selector::parse(".team-info-wrapper a.team-name").unwrap();
     let first_a_tag = fragment.select(&selector).next().unwrap();
-    let string = first_a_tag.value().attr("href").unwrap().split("/").collect::<Vec<&str>>()[5].to_string();
-    println!("{:?} {:?}", string, team_code);
-    match string {
-        team_code => HomeOrAway::away,
+    let away_team = Some(first_a_tag.value().attr("href").unwrap().split("/").collect::<Vec<&str>>()[5].to_string());
+    let result = *team_code == away_team.unwrap();
+    match result {
+        true => HomeOrAway::away,
         _ => HomeOrAway::home
     }
 
@@ -421,3 +421,14 @@ fn get_latest_game_home_box_test() {
     assert_eq!(team_box.overview.share_url, "https://www.espn.com/nba/boxscore/_/gameId/401307733");
 }
 
+#[test]
+fn get_orientation_home_test() {
+    let contents = fs::read_to_string("./test-data/raptors-home-box.html");
+    assert_eq!(get_orientation(&contents.unwrap(), "tor").to_string(), HomeOrAway::home.to_string());
+}
+
+#[test]
+fn get_orientation_away_test() {
+    let contents = fs::read_to_string("./test-data/raptors-away-box.html");
+    assert_eq!(get_orientation(&contents.unwrap(), "tor").to_string(), HomeOrAway::away.to_string());
+}
