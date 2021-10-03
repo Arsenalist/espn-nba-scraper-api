@@ -1,23 +1,20 @@
 use std::fs;
-use scraper::{Html, Selector};
+use scraper::{Html, Selector, ElementRef};
 use std::string::ToString;
 use strum_macros;
 use serde::{Serialize, Deserialize};
 use rocket::serde::json::Json;
 use std::collections::HashMap;
-use std::error::Error;
 
 use rocket::{get, post, routes};
-use rocket::http::{Header, Method, RawStr};
+use rocket::http::{Header};
 
 #[macro_use] extern crate rocket;
 use rocket::request::Request;
-use rocket::response::{self, Response, Responder};
-use rocket::http::ContentType;
+use rocket::response::{Response};
 
 
 use rocket::fairing::{Fairing, Info, Kind};
-use rocket_cors::{AllowedMethods, AllowedOrigins, CorsOptions};
 
 pub struct CORS;
 
@@ -46,31 +43,20 @@ impl Fairing for CORS {
 
 #[get("/nba/box/<team_code>")]
 async fn box_score(team_code: &str) -> Json<TeamBox> {
-    let mut res = reqwest::get(format!("https://www.espn.com/nba/team/_/name/{}", team_code)).await.unwrap().text().await.unwrap();
-    let mut latest_game_id = get_latest_game_id(res);
-    latest_game_id = String::from("401307777");
-    let mut res2 = reqwest::get(format!("https://www.espn.com/nba/boxscore/_/gameId/{}", latest_game_id)).await.unwrap().text().await.unwrap();
-    let game_box = get_latest_game_box(&res2, get_orientation(&res2, team_code));
-    return Json(game_box);
+    let team_page_html = reqwest::get(format!("https://www.espn.com/nba/team/_/name/{}", team_code)).await.unwrap().text().await.unwrap();
+    let latest_game_id = get_latest_game_id(team_page_html); // 401307777
+    let boxscore_page_html = reqwest::get(format!("https://www.espn.com/nba/boxscore/_/gameId/{}", latest_game_id)).await.unwrap().text().await.unwrap();
+    return Json(get_latest_game_box(&boxscore_page_html, get_orientation(&boxscore_page_html, team_code)));
 }
 
 #[post("/teams")]
 async fn teams() -> Json<Vec<Team>> {
-    let mut res = reqwest::get("https://www.espn.com/nba/teams").await.unwrap().text().await.unwrap();
-    return Json(get_teams(res));
-}
-
-#[post("/nba/generate-reaction")]
-async fn generate() -> Json<HashMap<String, String>> {
-    let mut res = reqwest::get("https://www.espn.com/nba/teams").await.unwrap().text().await.unwrap();
-    let mut x = HashMap::new();
-    x.insert("html".to_string(), "blooby".to_string());
-    return Json(x);
+    return Json(get_teams(reqwest::get("https://www.espn.com/nba/teams").await.unwrap().text().await.unwrap()));
 }
 
 #[launch]
 fn rocket() -> _ {
-    rocket::build().attach(CORS).mount("/", routes![box_score, teams, generate])
+    rocket::build().attach(CORS).mount("/", routes![box_score, teams])
 }
 
 
@@ -178,13 +164,15 @@ fn get_game_header(html: &String) -> Overview {
     let mut score = GameScore { away: TeamScore { score: "".to_string() }, home: TeamScore { score: "".to_string() } };
 
     let fragment = Html::parse_fragment(&html);
-    let box_score_link_selector = Selector::parse("link[rel=canonical").unwrap();
+
     let home_selector = Selector::parse(".competitors .home").unwrap();
     let home_elem = fragment.select(&home_selector).next().unwrap();
-    let mut name_selector = Selector::parse(".short-name").unwrap();
-    let mut score_selector = Selector::parse(".score").unwrap();
-    let mut team_logo_selector = Selector::parse(".team-logo").unwrap();
-    let mut id_selector = Selector::parse("a.team-name").unwrap();
+
+    let box_score_link_selector = Selector::parse("link[rel=canonical").unwrap();
+    let name_selector = Selector::parse(".short-name").unwrap();
+    let score_selector = Selector::parse(".score").unwrap();
+    let team_logo_selector = Selector::parse(".team-logo").unwrap();
+    let id_selector = Selector::parse("a.team-name").unwrap();
 
     let mut home_oriented = OrientedTeam {
         logos: Logos { w72xh72: "".to_string() },
@@ -198,19 +186,18 @@ fn get_game_header(html: &String) -> Overview {
         medium_name: "".to_string()
     };
 
-    home_oriented.medium_name = home_elem.select(&name_selector).next().unwrap().text().collect::<Vec<_>>()[0].to_string();
-    home_oriented.id = home_elem.select(&id_selector).next().unwrap().value().attr("href").unwrap().split("/").collect::<Vec<&str>>()[5].to_string();
-    home_oriented.logos.w72xh72 = home_elem.select(&team_logo_selector).next().unwrap().value().attr("src").unwrap().to_string();
-    score.home.score = home_elem.select(&score_selector).next().unwrap().text().collect::<Vec<_>>()[0].to_string();
+    home_oriented.medium_name = get_first_text_value(home_elem, &name_selector);
+    home_oriented.id = extract_team_code_from_a_tag(&id_selector, home_elem);
+    home_oriented.logos.w72xh72 = get_src_from_img(home_elem, &team_logo_selector);
+    score.home.score = get_first_text_value(home_elem, &score_selector);
 
     let away_selector = Selector::parse(".competitors .away").unwrap();
     let away_elem = fragment.select(&away_selector).next().unwrap();
-    name_selector = Selector::parse(".short-name").unwrap();
-    score_selector = Selector::parse(".score").unwrap();
-    away_oriented.medium_name = away_elem.select(&name_selector).next().unwrap().text().collect::<Vec<_>>()[0].to_string();
-    away_oriented.id = away_elem.select(&id_selector).next().unwrap().value().attr("href").unwrap().split("/").collect::<Vec<&str>>()[5].to_string();
-    away_oriented.logos.w72xh72 = away_elem.select(&team_logo_selector).next().unwrap().value().attr("src").unwrap().to_string();
-    score.away.score = away_elem.select(&score_selector).next().unwrap().text().collect::<Vec<_>>()[0].to_string();
+
+    away_oriented.medium_name = get_first_text_value(away_elem, &name_selector);
+    away_oriented.id = extract_team_code_from_a_tag(&id_selector, away_elem);
+    away_oriented.logos.w72xh72 = get_src_from_img(away_elem, &team_logo_selector);
+    score.away.score = get_first_text_value(away_elem, &score_selector);
 
     let box_score_link = fragment.select(&box_score_link_selector).next().unwrap().value().attr("href").unwrap().to_string();
 
@@ -225,6 +212,19 @@ fn get_game_header(html: &String) -> Overview {
     }
 
 }
+
+fn get_src_from_img(parent_element: ElementRef, team_logo_selector: &Selector) -> String {
+    parent_element.select(&team_logo_selector).next().unwrap().value().attr("src").unwrap().to_string()
+}
+
+fn get_first_text_value(parent_element: ElementRef, selector: &Selector) -> String {
+    parent_element.select(&selector).next().unwrap().text().collect::<Vec<_>>()[0].to_string()
+}
+
+fn extract_team_code_from_a_tag(a_tag_selector: &Selector, parent_element: ElementRef) -> String {
+    parent_element.select(&a_tag_selector).next().unwrap().value().attr("href").unwrap().split("/").collect::<Vec<&str>>()[5].to_string()
+}
+
 fn get_teams(html: String) -> Vec<Team> {
     let fragment = Html::parse_fragment(&html);
     let team_links_selector = Selector::parse("section.TeamLinks").unwrap();
@@ -354,7 +354,9 @@ fn get_orientation(html: &String, team_code: &str) -> HomeOrAway {
     let fragment = Html::parse_fragment(&html);
     let selector = Selector::parse(".team-info-wrapper a.team-name").unwrap();
     let first_a_tag = fragment.select(&selector).next().unwrap();
-    return match first_a_tag.value().attr("href").unwrap().split("/").collect::<Vec<&str>>()[5].to_string() {
+    let string = first_a_tag.value().attr("href").unwrap().split("/").collect::<Vec<&str>>()[5].to_string();
+    println!("{:?} {:?}", string, team_code);
+    match string {
         team_code => HomeOrAway::away,
         _ => HomeOrAway::home
     }
@@ -380,7 +382,7 @@ fn get_latest_game_id_test() {
 }
 
 #[test]
-fn get_latest_game_box_test() {
+fn get_latest_game_away_box_test() {
     let contents = fs::read_to_string("./test-data/raptors-away-box.html");
     let team_box = get_latest_game_box(&contents.unwrap(), HomeOrAway::away);
     assert_eq!(team_box.player_records[0].player.first_initial_and_last_name, "P. Siakam");
@@ -398,3 +400,24 @@ fn get_latest_game_box_test() {
     assert_eq!(team_box.overview.score.home.score, "114");
     assert_eq!(team_box.overview.share_url, "https://www.espn.com/nba/boxscore/_/gameId/401307777");
 }
+
+#[test]
+fn get_latest_game_home_box_test() {
+    let contents = fs::read_to_string("./test-data/raptors-home-box.html");
+    let team_box = get_latest_game_box(&contents.unwrap(), HomeOrAway::home);
+    assert_eq!(team_box.player_records[0].player.first_initial_and_last_name, "P. Siakam");
+    assert_eq!(team_box.player_records[0].player.player_id, "3149673");
+    assert_eq!(team_box.player_records[6].player.first_initial_and_last_name, "Y. Watanabe");
+    assert_eq!(team_box.player_records[11].player.first_initial_and_last_name, "A. Baynes");
+    assert_eq!(team_box.player_records[11].player.dnp, "DNP-COACH'S DECISION");
+    assert_eq!(team_box.overview.event.away_team.medium_name, "Nets");
+    assert_eq!(team_box.overview.event.home_team.medium_name, "Raptors");
+    assert_eq!(team_box.overview.event.home_team.id, "tor");
+    assert_eq!(team_box.overview.event.away_team.id, "bkn");
+    assert_eq!(team_box.overview.event.away_team.logos.w72xh72, "https://a.espncdn.com/combiner/i?img=/i/teamlogos/nba/500/bkn.png&h=100&w=100");
+    assert_eq!(team_box.overview.event.home_team.logos.w72xh72, "https://a.espncdn.com/combiner/i?img=/i/teamlogos/nba/500/tor.png&h=100&w=100");
+    assert_eq!(team_box.overview.score.away.score, "116");
+    assert_eq!(team_box.overview.score.home.score, "103");
+    assert_eq!(team_box.overview.share_url, "https://www.espn.com/nba/boxscore/_/gameId/401307733");
+}
+
