@@ -155,13 +155,21 @@ pub struct TeamScore {
 
 fn get_latest_game_id(html: String) -> String {
     let fragment = Html::parse_fragment(&html);
-    let selector = Selector::parse("section.club-schedule ul ul li:last-child a").unwrap();
-    let first_a_tag = fragment.select(&selector).next().unwrap();
-    let href = first_a_tag.value().attr("href").unwrap();
+    let last_completed_selector = Selector::parse("section.club-schedule ul ul li a:not(.upcoming)").unwrap();
+    let live_selector = Selector::parse("section.club-schedule ul ul li a[rel=nbagamecast]").unwrap();
+    let completed = fragment.select(&last_completed_selector).next();
+    let live = fragment.select(&live_selector).next();
+    let a;
+    if live.is_none() {
+        a = completed.unwrap();
+    } else {
+        a = live.unwrap();
+    }
+    let href = a.value().attr("href").unwrap();
     let is_game_live = href.contains("=");
     return match is_game_live {
-        true => first_a_tag.value().attr("href").unwrap().split("=").collect::<Vec<&str>>()[1].to_string(),
-        false => first_a_tag.value().attr("href").unwrap().split("/").collect::<Vec<&str>>()[5].to_string()
+        true => a.value().attr("href").unwrap().split("=").collect::<Vec<&str>>()[1].to_string(),
+        false => a.value().attr("href").unwrap().split("/").collect::<Vec<&str>>()[5].to_string()
     };
 }
 
@@ -383,13 +391,13 @@ fn get_teams_test() {
 #[test]
 fn get_latest_game_id_game_over_test() {
     let contents = fs::read_to_string("./test-data/team-page-game-over.html");
-    assert_eq!(get_latest_game_id(contents.unwrap()), String::from("401365892"));
+    assert_eq!(get_latest_game_id(contents.unwrap()), String::from("401365914"));
 }
 
 #[test]
 fn get_latest_game_id_live_game_test() {
     let contents = fs::read_to_string("./test-data/team-page-live-game.html");
-    assert_eq!(get_latest_game_id(contents.unwrap()), String::from("401365892"));
+    assert_eq!(get_latest_game_id(contents.unwrap()), String::from("401365915"));
 }
 
 #[test]
