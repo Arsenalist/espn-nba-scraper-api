@@ -328,7 +328,7 @@ fn get_latest_game_box(html: &String, home_or_away: HomeOrAway) -> TeamBox {
                 }
                 "ft" => {
                     player.free_throws_made = first_value.split("-").collect::<Vec<&str>>()[0].to_string();
-                    player.free_throws_made = first_value.split("-").collect::<Vec<&str>>()[1].to_string();
+                    player.free_throws_attempted = first_value.split("-").collect::<Vec<&str>>()[1].to_string();
                 },
                 "oreb" => player.oreb = first_value,
                 "dreb" => player.dreb = first_value,
@@ -406,6 +406,8 @@ fn get_latest_game_away_box_test() {
     let team_box = get_latest_game_box(&contents.unwrap(), HomeOrAway::away);
     assert_eq!(team_box.player_records[0].player.first_initial_and_last_name, "P. Siakam");
     assert_eq!(team_box.player_records[0].player.player_id, "3149673");
+    assert_eq!(team_box.player_records[0].player.free_throws_made, "5");
+    assert_eq!(team_box.player_records[0].player.free_throws_attempted, "7");
     assert_eq!(team_box.player_records[9].player.first_initial_and_last_name, "J. Harris");
     assert_eq!(team_box.player_records[11].player.first_initial_and_last_name, "A. Baynes");
     assert_eq!(team_box.player_records[11].player.dnp, "DNP-COACH'S DECISION");
