@@ -153,6 +153,13 @@ pub struct TeamScore {
     score: String,
 }
 
+fn get_upcoming_opponent_team_code(html: String) -> String {
+    let fragment = Html::parse_fragment(&html);
+    let upcoming_selector = Selector::parse("section.club-schedule ul ul li a.upcoming div.logo img").unwrap();
+    let upcoming = fragment.select(&upcoming_selector).next();
+    let a = upcoming.unwrap();
+    return a.value().attr("src").unwrap().split("/").collect::<Vec<&str>>()[9].to_string().split(".").collect::<Vec<&str>>()[0].to_string();
+}
 
 fn get_latest_game_id(html: String) -> String {
     let fragment = Html::parse_fragment(&html);
@@ -461,4 +468,10 @@ fn get_orientation_home_test() {
 fn get_orientation_away_test() {
     let contents = fs::read_to_string("./test-data/raptors-away-box.html");
     assert_eq!(get_orientation(&contents.unwrap(), "tor").to_string(), HomeOrAway::away.to_string());
+}
+
+#[test]
+fn get_upcoming_opponent_team_code_test() {
+    let contents = fs::read_to_string("./test-data/raptors-team-page-upcoming-opponent.html");
+    assert_eq!(get_upcoming_opponent_team_code(contents.unwrap()).to_string(), "no".to_string());
 }
