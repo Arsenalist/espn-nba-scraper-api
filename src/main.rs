@@ -104,6 +104,7 @@ pub struct OrientedTeam {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PlayerBoxScore {
+    starter: bool,
     first_initial_and_last_name: String,
     player_id: String,
     position: String,
@@ -272,6 +273,7 @@ fn get_latest_game_box(html: &String, home_or_away: HomeOrAway) -> TeamBox {
 
     for tr in tbodys.select(&tr_selector) {
         let mut player = PlayerBoxScore {
+            starter: false,
             first_initial_and_last_name: "".to_string(),
             player_id: "".to_string(),
             position: "".to_string(),
@@ -297,6 +299,7 @@ fn get_latest_game_box(html: &String, home_or_away: HomeOrAway) -> TeamBox {
         };
         let mut player_id = String::new();
         let mut valid_row = false;
+        let mut player_count = 0;
         for td in tr.select(&td_selector) {
             let name = td.value().attr("class").unwrap();
             let td_contents = td.text().collect::<Vec<_>>();
@@ -345,11 +348,14 @@ fn get_latest_game_box(html: &String, home_or_away: HomeOrAway) -> TeamBox {
             }
         }
         if valid_row {
+            player_count += 1;
+            player.starter = player_count <= 5;
             player_lines.push(Player {
                 player: player,
                 id: player_id,
                 alignment: home_or_away.to_string()
-            })
+            });
+
         }
 
     }
@@ -427,9 +433,12 @@ fn get_latest_game_home_box_test() {
     let contents = fs::read_to_string("./test-data/raptors-home-box.html");
     let team_box = get_latest_game_box(&contents.unwrap(), HomeOrAway::home);
     assert_eq!(team_box.player_records[0].player.first_initial_and_last_name, "P. Siakam");
+    assert_eq!(team_box.player_records[0].player.starter, true);
     assert_eq!(team_box.player_records[0].player.player_id, "3149673");
     assert_eq!(team_box.player_records[6].player.first_initial_and_last_name, "Y. Watanabe");
+    assert_eq!(team_box.player_records[6].player.starter, false);
     assert_eq!(team_box.player_records[11].player.first_initial_and_last_name, "A. Baynes");
+    assert_eq!(team_box.player_records[6].player.starter, false);
     assert_eq!(team_box.player_records[11].player.dnp, "DNP-COACH'S DECISION");
     assert_eq!(team_box.overview.event.away_team.medium_name, "Nets");
     assert_eq!(team_box.overview.event.home_team.medium_name, "Raptors");
