@@ -43,10 +43,28 @@ impl Fairing for CORS {
 
 #[get("/nba/box/<team_code>")]
 async fn box_score(team_code: &str) -> Json<TeamBox> {
+    let team_box = get_team_box_score(team_code).await;
+    return Json(team_box);
+}
+
+#[get("/nba/upcoming-probable-lineup/<team_code>")]
+async fn get_probable_lineups(team_code: String)  -> Json<Vec<HashMap<String, Vec<Player>>>>  {
+    let team_box_score = get_team_box_score(&team_code);
+
+    let team_page_html = reqwest::get(format!("https://www.espn.com/nba/team/_/name/{}", team_code)).await.unwrap().text().await;
+    let opponent_team_code = get_upcoming_opponent_team_code(team_page_html.unwrap());
+    let opponnet_team_box_score = get_team_box_score(&opponent_team_code);
+
+    return Json(vec![probable_lineups(&team_box_score.await.player_records), probable_lineups(&opponnet_team_box_score.await.player_records)]);
+
+}
+
+async fn get_team_box_score(team_code: &str) -> TeamBox {
     let team_page_html = reqwest::get(format!("https://www.espn.com/nba/team/_/name/{}", team_code)).await.unwrap().text().await.unwrap();
     let latest_game_id = get_latest_game_id(team_page_html); // 401307777
     let boxscore_page_html = reqwest::get(format!("https://www.espn.com/nba/boxscore/_/gameId/{}", latest_game_id)).await.unwrap().text().await.unwrap();
-    return Json(get_latest_game_box(&boxscore_page_html, get_orientation(&boxscore_page_html, team_code)));
+    let team_box = get_latest_game_box(&boxscore_page_html, get_orientation(&boxscore_page_html, team_code));
+    team_box
 }
 
 #[post("/teams")]
@@ -56,7 +74,7 @@ async fn teams() -> Json<Vec<Team>> {
 
 #[launch]
 fn rocket() -> _ {
-    rocket::build().attach(CORS).mount("/", routes![box_score, teams])
+    rocket::build().attach(CORS).mount("/", routes![box_score, teams, get_probable_lineups])
 }
 
 
@@ -129,6 +147,13 @@ pub struct PlayerBoxScore {
     headshots: HashMap<String, String>
 }
 
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PositionOptions {
+    position: String,
+    players: Vec<Player>
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Team {
     id: String,
@@ -158,7 +183,7 @@ fn get_upcoming_opponent_team_code(html: String) -> String {
     let upcoming_selector = Selector::parse("section.club-schedule ul ul li a.upcoming div.logo img").unwrap();
     let upcoming = fragment.select(&upcoming_selector).next();
     let a = upcoming.unwrap();
-    return a.value().attr("src").unwrap().split("/").collect::<Vec<&str>>()[9].to_string().split(".").collect::<Vec<&str>>()[0].to_string();
+    return a.value().attr("src").unwrap().split("/").collect::<Vec<&str>>()[10].to_string().split(".").collect::<Vec<&str>>()[0].to_string();
 }
 
 fn get_latest_game_id(html: String) -> String {
@@ -474,4 +499,114 @@ fn get_orientation_away_test() {
 fn get_upcoming_opponent_team_code_test() {
     let contents = fs::read_to_string("./test-data/raptors-team-page-upcoming-opponent.html");
     assert_eq!(get_upcoming_opponent_team_code(contents.unwrap()).to_string(), "no".to_string());
+}
+
+
+fn probable_lineups(players: &Vec<Player>) -> HashMap<String, Vec<Player>> {
+    let mut by_position = HashMap::new();
+    for (pos, e) in players.iter().enumerate() {
+        let position: String;
+        match pos {
+            0 => { position = "PF".to_string(); }
+            1 => { position = "SF".to_string(); }
+            2 => { position = "C".to_string(); }
+            3 => { position = "PG".to_string(); }
+            4 => { position = "SG".to_string(); }
+            _ => {
+                match e.player.position.as_ref() {
+                    "F" => { position = "SF".to_string() }
+                    "G" => { position = "SG".to_string() }
+                    _ => { position = e.player.position.to_string()}
+                }
+            }
+        }
+        let px = position.to_string();
+        by_position.entry(position).or_insert(Vec::new()).push(
+            blank_player(e.player.first_initial_and_last_name.to_string(), px, e.player.starter)
+        )
+    }
+    return by_position;
+}
+
+#[test]
+fn probable_lineups_test() {
+    let players = vec![
+        blank_player("PF1".to_string(), "PF".to_string(), true),
+        blank_player("SF1".to_string(), "SF".to_string(), true),
+        blank_player("C1".to_string(), "C".to_string(), true),
+        blank_player("PG1".to_string(), "PG".to_string(), true),
+        blank_player("SG1".to_string(), "SG".to_string(), true),
+        blank_player("PF2".to_string(), "PF".to_string(), false),
+        blank_player("SF2".to_string(), "SF".to_string(), false),
+        blank_player("C2".to_string(), "C".to_string(), false),
+        blank_player("PG2".to_string(), "PG".to_string(), false),
+        blank_player("SG2".to_string(), "SG".to_string(), false),
+        blank_player("PF3".to_string(), "PF".to_string(), false),
+        blank_player("SF3".to_string(), "SF".to_string(), false),
+        blank_player("PG3".to_string(), "PG".to_string(), false),
+        blank_player("SG3".to_string(), "SG".to_string(), false),
+        blank_player("SG4".to_string(), "SG".to_string(), false)
+    ];
+    let lineup = probable_lineups(&players);
+
+
+
+    // starters must be on each
+    assert_eq!(lineup.get("PF").unwrap()[0].player.first_initial_and_last_name, "PF1");
+    assert_eq!(lineup.get("PF").unwrap()[1].player.first_initial_and_last_name, "PF2");
+    assert_eq!(lineup.get("PF").unwrap()[2].player.first_initial_and_last_name, "PF3");
+    assert_eq!(lineup.get("PF").unwrap().len(), 3);
+
+
+    assert_eq!(lineup.get("SF").unwrap()[0].player.first_initial_and_last_name, "SF1");
+    assert_eq!(lineup.get("SF").unwrap()[1].player.first_initial_and_last_name, "SF2");
+    assert_eq!(lineup.get("SF").unwrap()[2].player.first_initial_and_last_name, "SF3");
+    assert_eq!(lineup.get("SF").unwrap().len(), 3);
+
+    assert_eq!(lineup.get("PG").unwrap()[0].player.first_initial_and_last_name, "PG1");
+    assert_eq!(lineup.get("PG").unwrap()[1].player.first_initial_and_last_name, "PG2");
+    assert_eq!(lineup.get("PG").unwrap()[2].player.first_initial_and_last_name, "PG3");
+    assert_eq!(lineup.get("PG").unwrap().len(), 3);
+
+    assert_eq!(lineup.get("C").unwrap()[0].player.first_initial_and_last_name, "C1");
+    assert_eq!(lineup.get("C").unwrap()[1].player.first_initial_and_last_name, "C2");
+    assert_eq!(lineup.get("C").unwrap().len(), 2);
+
+    assert_eq!(lineup.get("SG").unwrap()[0].player.first_initial_and_last_name, "SG1");
+    assert_eq!(lineup.get("SG").unwrap()[1].player.first_initial_and_last_name, "SG2");
+    assert_eq!(lineup.get("SG").unwrap()[2].player.first_initial_and_last_name, "SG3");
+    assert_eq!(lineup.get("SG").unwrap()[3].player.first_initial_and_last_name, "SG4");
+    assert_eq!(lineup.get("SG").unwrap().len(), 4);
+}
+
+fn blank_player(name: String, position: String, starter: bool) -> Player {
+    return Player {
+        id: name.to_string(),
+        alignment: "".to_string(),
+        player: PlayerBoxScore {
+            starter,
+            first_initial_and_last_name: name.to_string(),
+            player_id: "".to_string(),
+            position: position.to_string(),
+            minutes: "".to_string(),
+            field_goals_made: "".to_string(),
+            field_goals_attempted: "".to_string(),
+            three_point_field_goals_made: "".to_string(),
+            three_point_field_goals_attempted: "".to_string(),
+            free_throws_made: "".to_string(),
+            free_throws_attempted: "".to_string(),
+            oreb: "".to_string(),
+            dreb: "".to_string(),
+            rebounds_total: "".to_string(),
+            assists: "".to_string(),
+            steals: "".to_string(),
+            blocked_shots: "".to_string(),
+            turnovers: "".to_string(),
+            pf: "".to_string(),
+            plus_minus: "".to_string(),
+            points: "".to_string(),
+            dnp: "".to_string(),
+            headshots: HashMap::new()
+        }
+    };
 }
