@@ -507,7 +507,7 @@ fn probable_lineups(players: &Vec<Player>) -> HashMap<String, Vec<Player>> {
     for  e in players.iter() {
         let position: String;
         match e.player.position.as_ref() {
-            "F" => { position = "SF".to_string() }
+            "F" => { position = "PF".to_string() }
             "G" => { position = "SG".to_string() }
             _ => { position = e.player.position.to_string()}
         }
@@ -534,7 +534,7 @@ fn probable_lineups_test() {
         blank_player("SG2".to_string(), "SG".to_string(), false),
         blank_player("PF3".to_string(), "PF".to_string(), false),
         blank_player("SF3".to_string(), "SF".to_string(), false),
-        blank_player("SF4".to_string(), "F".to_string(), false),
+        blank_player("PF4".to_string(), "F".to_string(), false),
         blank_player("PG3".to_string(), "PG".to_string(), false),
         blank_player("SG3".to_string(), "SG".to_string(), false),
         blank_player("SG4".to_string(), "SG".to_string(), false),
@@ -548,14 +548,14 @@ fn probable_lineups_test() {
     assert_eq!(lineup.get("PF").unwrap()[0].player.first_initial_and_last_name, "PF1");
     assert_eq!(lineup.get("PF").unwrap()[1].player.first_initial_and_last_name, "PF2");
     assert_eq!(lineup.get("PF").unwrap()[2].player.first_initial_and_last_name, "PF3");
-    assert_eq!(lineup.get("PF").unwrap().len(), 3);
+    assert_eq!(lineup.get("PF").unwrap()[3].player.first_initial_and_last_name, "PF4");
+    assert_eq!(lineup.get("PF").unwrap().len(), 4);
 
 
     assert_eq!(lineup.get("SF").unwrap()[0].player.first_initial_and_last_name, "SF1");
     assert_eq!(lineup.get("SF").unwrap()[1].player.first_initial_and_last_name, "SF2");
     assert_eq!(lineup.get("SF").unwrap()[2].player.first_initial_and_last_name, "SF3");
-    assert_eq!(lineup.get("SF").unwrap()[3].player.first_initial_and_last_name, "SF4");
-    assert_eq!(lineup.get("SF").unwrap().len(), 4);
+    assert_eq!(lineup.get("SF").unwrap().len(), 3);
 
     assert_eq!(lineup.get("PG").unwrap()[0].player.first_initial_and_last_name, "PG1");
     assert_eq!(lineup.get("PG").unwrap()[1].player.first_initial_and_last_name, "PG2");
