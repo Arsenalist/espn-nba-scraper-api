@@ -504,21 +504,12 @@ fn get_upcoming_opponent_team_code_test() {
 
 fn probable_lineups(players: &Vec<Player>) -> HashMap<String, Vec<Player>> {
     let mut by_position = HashMap::new();
-    for (pos, e) in players.iter().enumerate() {
+    for  e in players.iter() {
         let position: String;
-        match pos {
-            0 => { position = "PF".to_string(); }
-            1 => { position = "SF".to_string(); }
-            2 => { position = "C".to_string(); }
-            3 => { position = "PG".to_string(); }
-            4 => { position = "SG".to_string(); }
-            _ => {
-                match e.player.position.as_ref() {
-                    "F" => { position = "SF".to_string() }
-                    "G" => { position = "SG".to_string() }
-                    _ => { position = e.player.position.to_string()}
-                }
-            }
+        match e.player.position.as_ref() {
+            "F" => { position = "SF".to_string() }
+            "G" => { position = "SG".to_string() }
+            _ => { position = e.player.position.to_string()}
         }
         let px = position.to_string();
         by_position.entry(position).or_insert(Vec::new()).push(
@@ -543,9 +534,11 @@ fn probable_lineups_test() {
         blank_player("SG2".to_string(), "SG".to_string(), false),
         blank_player("PF3".to_string(), "PF".to_string(), false),
         blank_player("SF3".to_string(), "SF".to_string(), false),
+        blank_player("SF4".to_string(), "F".to_string(), false),
         blank_player("PG3".to_string(), "PG".to_string(), false),
         blank_player("SG3".to_string(), "SG".to_string(), false),
-        blank_player("SG4".to_string(), "SG".to_string(), false)
+        blank_player("SG4".to_string(), "SG".to_string(), false),
+        blank_player("SG5".to_string(), "G".to_string(), false)
     ];
     let lineup = probable_lineups(&players);
 
@@ -561,7 +554,8 @@ fn probable_lineups_test() {
     assert_eq!(lineup.get("SF").unwrap()[0].player.first_initial_and_last_name, "SF1");
     assert_eq!(lineup.get("SF").unwrap()[1].player.first_initial_and_last_name, "SF2");
     assert_eq!(lineup.get("SF").unwrap()[2].player.first_initial_and_last_name, "SF3");
-    assert_eq!(lineup.get("SF").unwrap().len(), 3);
+    assert_eq!(lineup.get("SF").unwrap()[3].player.first_initial_and_last_name, "SF4");
+    assert_eq!(lineup.get("SF").unwrap().len(), 4);
 
     assert_eq!(lineup.get("PG").unwrap()[0].player.first_initial_and_last_name, "PG1");
     assert_eq!(lineup.get("PG").unwrap()[1].player.first_initial_and_last_name, "PG2");
@@ -576,7 +570,8 @@ fn probable_lineups_test() {
     assert_eq!(lineup.get("SG").unwrap()[1].player.first_initial_and_last_name, "SG2");
     assert_eq!(lineup.get("SG").unwrap()[2].player.first_initial_and_last_name, "SG3");
     assert_eq!(lineup.get("SG").unwrap()[3].player.first_initial_and_last_name, "SG4");
-    assert_eq!(lineup.get("SG").unwrap().len(), 4);
+    assert_eq!(lineup.get("SG").unwrap()[4].player.first_initial_and_last_name, "SG5");
+    assert_eq!(lineup.get("SG").unwrap().len(), 5);
 }
 
 fn blank_player(name: String, position: String, starter: bool) -> Player {
