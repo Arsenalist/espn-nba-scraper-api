@@ -72,9 +72,29 @@ async fn teams() -> Json<Vec<Team>> {
     return Json(get_teams(reqwest::get("https://www.espn.com/nba/teams").await.unwrap().text().await.unwrap()));
 }
 
+#[get("/injuries")]
+async fn get_injuries() -> Json<Vec<TeamInjuryReport>> {
+    let teams = get_teams(reqwest::get("https://www.espn.com/nba/teams").await.unwrap().text().await.unwrap());
+    let team_injury_reports = injuries(reqwest::get("https://www.espn.com/nba/injuries").await.unwrap().text().await.unwrap());
+    let mut team_injury_reports_return = Vec::new();
+    for team in &teams {
+        for tir in team_injury_reports.to_owned() {
+            if team.full_name == tir.team_name {
+                team_injury_reports_return.push(TeamInjuryReport {
+                    team_code: team.id.to_string(),
+                    team_name: tir.team_name.clone(),
+                    injuries: tir.injuries.to_owned()
+                });
+            }
+        }
+    }
+    return Json(team_injury_reports_return);
+}
+
+
 #[launch]
 fn rocket() -> _ {
-    rocket::build().attach(CORS).mount("/", routes![box_score, teams, get_probable_lineups])
+    rocket::build().attach(CORS).mount("/", routes![box_score, teams, get_probable_lineups, get_injuries])
 }
 
 
@@ -120,6 +140,24 @@ pub struct OrientedTeam {
 }
 
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PlayerInjury {
+    name: String,
+    date: String,
+    position: String,
+    status: String,
+    description: String,
+}
+
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TeamInjuryReport {
+    team_code: String,
+    team_name: String,
+    injuries: Vec<PlayerInjury>
+}
+
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PlayerBoxScore {
     starter: bool,
@@ -154,7 +192,7 @@ pub struct PositionOptions {
     players: Vec<Player>
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Team {
     id: String,
     full_name: String
@@ -264,7 +302,11 @@ fn get_src_from_img(parent_element: ElementRef, team_logo_selector: &Selector) -
 }
 
 fn get_first_text_value(parent_element: ElementRef, selector: &Selector) -> String {
-    parent_element.select(&selector).next().unwrap().text().collect::<Vec<_>>()[0].to_string()
+    let vec = parent_element.select(&selector).next().unwrap().text().collect::<Vec<_>>();
+    return match vec.len() {
+        0 => "".to_string(),
+        _=> vec[0].to_string()
+    };
 }
 
 fn extract_team_code_from_a_tag(a_tag_selector: &Selector, parent_element: ElementRef) -> String {
@@ -517,6 +559,46 @@ fn probable_lineups(players: &Vec<Player>) -> HashMap<String, Vec<Player>> {
         )
     }
     return by_position;
+}
+
+fn injuries(html: String) -> Vec<TeamInjuryReport> {
+    let fragment = Html::parse_fragment(&html);
+    // let description = get_first_text_value(row, &Selector::parse("injuries__teamName").unwrap());
+    let mut team_injury_reports = Vec::new();
+    for div in fragment.select(&Selector::parse("div.Table__league-injuries").unwrap()) {
+        let mut team_injury_report = TeamInjuryReport {
+            team_code: "".to_string(),
+            team_name: "".to_string(),
+            injuries: vec![]
+        };
+        team_injury_report.team_name = get_first_text_value(div, &Selector::parse(".injuries__teamName").unwrap());
+        for row in div.select(&Selector::parse("tbody tr.Table__TR").unwrap()) {
+            team_injury_report.injuries.push(PlayerInjury {
+                name: get_first_text_value(row, &Selector::parse("td.col-name a").unwrap()),
+                date: get_first_text_value(row, &Selector::parse("td.col-date").unwrap()),
+                position: get_first_text_value(row, &Selector::parse("td.col-pos").unwrap()),
+                status: get_first_text_value(row, &Selector::parse("td.col-stat span").unwrap()),
+                description: get_first_text_value(row, &Selector::parse("td.col-desc").unwrap())
+            });
+        };
+        team_injury_reports.push(team_injury_report);
+    }
+    return team_injury_reports;
+}
+
+#[test]
+fn injuries_test() {
+    let contents = fs::read_to_string("./test-data/injuries.html");
+    let team_injury_reports = injuries(contents.unwrap());
+    assert_eq!(team_injury_reports[0].team_name, "Atlanta Hawks");
+    assert_eq!(team_injury_reports[1].team_name, "Boston Celtics");
+    assert_eq!(team_injury_reports[1].injuries[0].name, "Brodric Thomas");
+    assert_eq!(team_injury_reports[1].injuries[0].position, "G");
+    assert_eq!(team_injury_reports[1].injuries[0].date, "Jan 9");
+    assert_eq!(team_injury_reports[1].injuries[0].description, "Thomas (back) is listed as probable for Monday's game against the Pacers.");
+    assert_eq!(team_injury_reports[4].injuries.len(), 4);
+    assert_eq!(team_injury_reports.len(), 30);
+    assert_eq!(team_injury_reports[29].team_name, "Washington Wizards");
 }
 
 #[test]
