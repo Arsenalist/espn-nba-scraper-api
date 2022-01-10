@@ -48,14 +48,29 @@ async fn box_score(team_code: &str) -> Json<TeamBox> {
 }
 
 #[get("/nba/upcoming-probable-lineup/<team_code>")]
-async fn get_probable_lineups(team_code: String)  -> Json<Vec<HashMap<String, Vec<Player>>>>  {
-    let team_box_score = get_team_box_score(&team_code);
+async fn get_probable_lineups(team_code: String)  -> Json<Vec<ProbableLineup>>  {
+    let team_box_score = get_team_box_score(&team_code).await;
 
     let team_page_html = reqwest::get(format!("https://www.espn.com/nba/team/_/name/{}", team_code)).await.unwrap().text().await;
     let opponent_team_code = get_upcoming_opponent_team_code(team_page_html.unwrap());
     let opponnet_team_box_score = get_team_box_score(&opponent_team_code);
 
-    return Json(vec![probable_lineups(&team_box_score.await.player_records), probable_lineups(&opponnet_team_box_score.await.player_records)]);
+    let injuries = get_injuries_with_team_code().await;
+
+    let team_probable_lineup = ProbableLineup {
+        team_code: team_code.to_owned(),
+        lineup_by_position: probable_lineups(&team_box_score.player_records),
+        injury_report: injuries.to_owned().into_iter().find(|tij| tij.team_code == team_code).unwrap()
+    };
+
+    let opponent_team_probable_lineup = ProbableLineup {
+        team_code: opponent_team_code.to_owned(),
+        lineup_by_position: probable_lineups(&team_box_score.player_records),
+        injury_report: injuries.to_owned().into_iter().find(|tij| tij.team_code == opponent_team_code).unwrap()
+    };
+
+
+    return Json(vec![team_probable_lineup, opponent_team_probable_lineup]);
 
 }
 
@@ -74,6 +89,10 @@ async fn teams() -> Json<Vec<Team>> {
 
 #[get("/injuries")]
 async fn get_injuries() -> Json<Vec<TeamInjuryReport>> {
+    return Json(get_injuries_with_team_code().await);
+}
+
+async fn get_injuries_with_team_code() -> Vec<TeamInjuryReport> {
     let teams = get_teams(reqwest::get("https://www.espn.com/nba/teams").await.unwrap().text().await.unwrap());
     let team_injury_reports = injuries(reqwest::get("https://www.espn.com/nba/injuries").await.unwrap().text().await.unwrap());
     let mut team_injury_reports_return = Vec::new();
@@ -88,7 +107,7 @@ async fn get_injuries() -> Json<Vec<TeamInjuryReport>> {
             }
         }
     }
-    return Json(team_injury_reports_return);
+    return team_injury_reports_return;
 }
 
 
@@ -214,6 +233,14 @@ pub struct GameScore {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TeamScore {
     score: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProbableLineup {
+    team_code: String,
+    lineup_by_position: HashMap<String, Vec<Player>>,
+    injury_report: TeamInjuryReport
+
 }
 
 fn get_upcoming_opponent_team_code(html: String) -> String {
