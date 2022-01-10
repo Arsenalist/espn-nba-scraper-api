@@ -53,7 +53,7 @@ async fn get_probable_lineups(team_code: String)  -> Json<Vec<ProbableLineup>>  
 
     let team_page_html = reqwest::get(format!("https://www.espn.com/nba/team/_/name/{}", team_code)).await.unwrap().text().await;
     let opponent_team_code = get_upcoming_opponent_team_code(team_page_html.unwrap());
-    let opponnet_team_box_score = get_team_box_score(&opponent_team_code);
+    let opponent_team_box_score = get_team_box_score(&opponent_team_code).await;
 
     let injuries = get_injuries_with_team_code().await;
 
@@ -65,7 +65,7 @@ async fn get_probable_lineups(team_code: String)  -> Json<Vec<ProbableLineup>>  
 
     let opponent_team_probable_lineup = ProbableLineup {
         team_code: opponent_team_code.to_owned(),
-        lineup_by_position: probable_lineups(&team_box_score.player_records),
+        lineup_by_position: probable_lineups(&opponent_team_box_score.player_records),
         injury_report: injuries.to_owned().into_iter().find(|tij| tij.team_code == opponent_team_code).unwrap()
     };
 
