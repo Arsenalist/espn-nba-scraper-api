@@ -60,13 +60,15 @@ async fn get_probable_lineups(team_code: String)  -> Json<Vec<ProbableLineup>>  
     let team_probable_lineup = ProbableLineup {
         team_code: team_code.to_owned(),
         lineup_by_position: probable_lineups(&team_box_score.player_records),
-        injury_report: injuries.to_owned().into_iter().find(|tij| tij.team_code == team_code).unwrap()
+        injury_report: injuries.to_owned().into_iter().find(|tij| tij.team_code == team_code).unwrap(),
+        previous_results: get_previous_results(team_code).await
     };
 
     let opponent_team_probable_lineup = ProbableLineup {
         team_code: opponent_team_code.to_owned(),
         lineup_by_position: probable_lineups(&opponent_team_box_score.player_records),
-        injury_report: injuries.to_owned().into_iter().find(|tij| tij.team_code == opponent_team_code).unwrap()
+        injury_report: injuries.to_owned().into_iter().find(|tij| tij.team_code == opponent_team_code).unwrap(),
+        previous_results: get_previous_results(opponent_team_code).await
     };
 
 
@@ -90,6 +92,42 @@ async fn teams() -> Json<Vec<Team>> {
 #[get("/injuries")]
 async fn get_injuries() -> Json<Vec<TeamInjuryReport>> {
     return Json(get_injuries_with_team_code().await);
+}
+
+
+async fn get_previous_results(team_code: String) -> Vec<GameResult> {
+    let team_page_html = reqwest::get(format!("https://www.espn.com/nba/team/_/name/{}", team_code)).await.unwrap().text().await;
+    return get_previous_results_from_team_page_html(team_page_html.unwrap());
+}
+
+
+fn get_previous_results_from_team_page_html(html: String) -> Vec<GameResult> {
+    let fragment = Html::parse_fragment(&html);
+    let mut game_results = Vec::new();
+    for a in fragment.select(&Selector::parse("section.club-schedule ul ul li a:not(.upcoming)").unwrap()) {
+        game_results.push(GameResult {
+            opponent: get_first_text_value(a, &Selector::parse("div.game-info").unwrap()),
+            score: get_first_text_value(a, &Selector::parse("div.game-meta .score").unwrap()),
+            result: get_first_text_value(a, &Selector::parse("div.game-meta .game-result").unwrap()),
+            box_score_link: format!("https://www.espn.com{}", a.value().attr("href").unwrap().to_string())
+        });
+        if game_results.len() == 5 {
+            break;
+        }
+    }
+    return game_results;
+}
+
+
+#[test]
+fn get_previous_games_test() {
+    let contents = fs::read_to_string("./test-data/brooklyn-home-page-for-previous-games.html");
+    let previous_games = get_previous_results_from_team_page_html(contents.unwrap());
+    assert_eq!(previous_games[0].opponent, "@  Trail Blazers");
+    assert_eq!(previous_games[0].score, "114-108");
+    assert_eq!(previous_games[0].result, "L");
+    assert_eq!(previous_games[0].box_score_link, "https://www.espn.com/nba/game/_/gameId/401401133");
+    assert_eq!(previous_games.len(), 5);
 }
 
 async fn get_injuries_with_team_code() -> Vec<TeamInjuryReport> {
@@ -239,8 +277,17 @@ pub struct TeamScore {
 pub struct ProbableLineup {
     team_code: String,
     lineup_by_position: HashMap<String, Vec<Player>>,
-    injury_report: TeamInjuryReport
+    injury_report: TeamInjuryReport,
+    previous_results: Vec<GameResult>
 
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GameResult {
+    opponent: String,
+    result: String,
+    score: String,
+    box_score_link: String
 }
 
 fn get_upcoming_opponent_team_code(html: String) -> String {
