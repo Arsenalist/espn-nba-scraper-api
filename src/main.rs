@@ -573,20 +573,85 @@ fn get_upcoming_opponent_team_code_test() {
 
 fn probable_lineups(players: &Vec<Player>) -> HashMap<String, Vec<Player>> {
     let mut by_position = HashMap::new();
-    for  e in players.iter() {
+    let mut duplicates  =  Vec::new();
+    for  (idx, e) in players.iter().enumerate() {
         let position: String;
         match e.player.position.as_ref() {
             "F" => { position = "PF".to_string() }
             "G" => { position = "SG".to_string() }
             _ => { position = e.player.position.to_string()}
         }
-        let px = position.to_string();
-        by_position.entry(position).or_insert(Vec::new()).push(
-            blank_player(e.player.first_initial_and_last_name.to_string(), px, e.player.starter)
-        )
+        // if duplicate position in starters, store it
+        if idx < 5 {
+            if !by_position.contains_key(&position) {
+                let mut v = Vec::new();
+                v.push(blank_player(e.player.first_initial_and_last_name.to_string(), position.to_string(), e.player.starter));
+                by_position.insert(position.to_string().to_owned(), v);
+
+            } else {
+                duplicates.push(blank_player(e.player.first_initial_and_last_name.to_string(), position.to_string(), e.player.starter));
+            }
+        }
+        // distribute duplicates
+        if idx == 4 {
+            for pos in vec!["PG", "SG", "PF", "C", "SF"].iter() {
+                if !by_position.contains_key(&pos.to_string()) {
+                    let mut v = Vec::new();
+                    v.push(duplicates.pop().unwrap());
+                    by_position.insert(pos.to_string().to_owned(), v);
+                }
+            }
+        }
+        // fill out remaining roster
+        if idx >= 5 {
+            by_position.entry(position.to_string()).or_insert(Vec::new()).push(
+                blank_player(e.player.first_initial_and_last_name.to_string(), position.to_string(), e.player.starter)
+            )
+        }
     }
     return by_position;
 }
+
+#[test]
+fn probable_lineups_starting_five_has_missing_sf_test() {
+    let players = vec![
+        blank_player("PF1".to_string(), "PF".to_string(), true),
+        blank_player("SF1".to_string(), "PF".to_string(), true),
+        blank_player("C1".to_string(), "C".to_string(), true),
+        blank_player("PG1".to_string(), "PG".to_string(), true),
+        blank_player("SG1".to_string(), "SG".to_string(), true),
+    ];
+    let lineup = probable_lineups(&players);
+
+    // starters must be on each
+    assert_eq!(lineup.get("PF").unwrap()[0].player.first_initial_and_last_name, "PF1");
+    assert_eq!(lineup.get("SF").unwrap()[0].player.first_initial_and_last_name, "SF1");
+    assert_eq!(lineup.get("C").unwrap()[0].player.first_initial_and_last_name, "C1");
+    assert_eq!(lineup.get("PG").unwrap()[0].player.first_initial_and_last_name, "PG1");
+    assert_eq!(lineup.get("SG").unwrap()[0].player.first_initial_and_last_name, "SG1");
+}
+
+
+#[test]
+fn four_positions_distributed_test() {
+    // "PG", "SG", "PF", "C", "SF"
+    let players = vec![
+        blank_player("PF1".to_string(), "PF".to_string(), true),
+        blank_player("SF1".to_string(), "PF".to_string(), true),
+        blank_player("C1".to_string(), "PF".to_string(), true),
+        blank_player("SG1".to_string(), "PF".to_string(), true),
+        blank_player("PG1".to_string(), "PF".to_string(), true),
+    ];
+    let lineup = probable_lineups(&players);
+
+    // starters must be on each
+    assert_eq!(lineup.get("PF").unwrap()[0].player.first_initial_and_last_name, "PF1");
+    assert_eq!(lineup.get("PG").unwrap()[0].player.first_initial_and_last_name, "PG1");
+    assert_eq!(lineup.get("SG").unwrap()[0].player.first_initial_and_last_name, "SG1");
+    assert_eq!(lineup.get("C").unwrap()[0].player.first_initial_and_last_name, "C1");
+    assert_eq!(lineup.get("SF").unwrap()[0].player.first_initial_and_last_name, "SF1");
+}
+
 
 fn injuries(html: String) -> Vec<TeamInjuryReport> {
     let fragment = Html::parse_fragment(&html);
