@@ -3,7 +3,7 @@ use scraper::{Html, Selector, ElementRef};
 use std::string::ToString;
 use strum_macros;
 use serde::{Serialize, Deserialize};
-use rocket::serde::json::Json;
+use rocket::serde::json::{Json, Value};
 use std::collections::HashMap;
 
 use rocket::{get, post, routes};
@@ -39,7 +39,8 @@ impl Fairing for CORS {
 
     }
 }
-
+#[macro_use]
+extern crate serde_json;
 
 #[get("/nba/box/<team_code>")]
 async fn box_score(team_code: &str) -> Json<TeamBox> {
@@ -48,14 +49,16 @@ async fn box_score(team_code: &str) -> Json<TeamBox> {
 }
 
 #[get("/nba/upcoming-probable-lineup/<team_code>")]
-async fn get_probable_lineups(team_code: String)  -> Json<Vec<ProbableLineup>>  {
+async fn get_probable_lineups(team_code: String) -> Json<Value> {
     let team_box_score = get_team_box_score(&team_code).await;
 
-    let team_page_html = reqwest::get(format!("https://www.espn.com/nba/team/_/name/{}", team_code)).await.unwrap().text().await;
-    let opponent_team_code = get_upcoming_opponent_team_code(team_page_html.unwrap());
+    let team_page_html = reqwest::get(format!("https://www.espn.com/nba/team/_/name/{}", team_code)).await.unwrap().text().await.unwrap();
+    let opponent_team_code = get_upcoming_opponent_team_code(team_page_html.to_string());
     let opponent_team_box_score = get_team_box_score(&opponent_team_code).await;
 
     let injuries = get_injuries_with_team_code().await;
+
+    let game_odds = get_odds_for_game(get_upcoming_game_id_from_html(team_page_html.to_string())).await;
 
     let team_probable_lineup = ProbableLineup {
         team_code: team_code.to_owned(),
@@ -72,7 +75,11 @@ async fn get_probable_lineups(team_code: String)  -> Json<Vec<ProbableLineup>>  
     };
 
 
-    return Json(vec![team_probable_lineup, opponent_team_probable_lineup]);
+    return Json(json!({
+        "team": team_probable_lineup,
+        "opponent": opponent_team_probable_lineup,
+        "odds": game_odds
+    }));
 
 }
 
@@ -94,6 +101,61 @@ async fn get_injuries() -> Json<Vec<TeamInjuryReport>> {
     return Json(get_injuries_with_team_code().await);
 }
 
+
+fn get_team_code_from_logo_url(logo_url: String) -> String {
+    return logo_url.split("500/").collect::<Vec<&str>>()[1].to_string().split(".png").collect::<Vec<&str>>()[0].to_string();
+}
+
+async fn get_odds_for_game(game_id: String) -> GameOdds {
+    let game_page_html = reqwest::get(format!("https://www.espn.com/nba/game/_/gameId/{}", game_id)).await.unwrap().text().await;
+    return get_odds_for_game_html(game_page_html.unwrap());
+}
+
+fn get_odds_for_game_html(html: String) -> GameOdds {
+    let fragment = Html::parse_fragment(&html);
+    let away_team = get_team_code_from_logo_url(fragment.select(&Selector::parse("th.team:first-child .img-container img").unwrap()).next().unwrap().value().attr("src").unwrap().to_string());
+    let home_team = get_team_code_from_logo_url(fragment.select(&Selector::parse("th.team:last-child .img-container img").unwrap()).next().unwrap().value().attr("src").unwrap().to_string());
+
+    let x = &Selector::parse(".pick-center-content table.smallTable tbody tr:not([data-type])").unwrap();
+    let mut select = fragment.select(x);
+    let spread = select.next();
+    let mut game_odds = GameOdds {
+        home_team,
+        away_team,
+        home_spread: "".to_string(),
+        away_spread: "".to_string(),
+        home_moneyline: "".to_string(),
+        away_moneyline: "".to_string(),
+        over_under: "".to_string()
+    };
+    if !spread.is_none() {
+        game_odds.away_spread = get_first_text_value(spread.unwrap(), &Selector::parse(".score:first-child").unwrap());
+        game_odds.home_spread = get_first_text_value(spread.unwrap(), &Selector::parse(".score:last-child").unwrap());
+    }
+    let moneyline = select.next();
+    if !moneyline.is_none() {
+        game_odds.away_moneyline = get_first_text_value(moneyline.unwrap(), &Selector::parse(".score:first-child").unwrap());
+        game_odds.home_moneyline = get_first_text_value(moneyline.unwrap(), &Selector::parse(".score:last-child").unwrap());
+    }
+    let over_under = select.next();
+    if !over_under.is_none() {
+        game_odds.over_under = get_first_text_value(over_under.unwrap(), &Selector::parse(".score span:last-child").unwrap());
+    }
+    return game_odds;
+}
+
+#[test]
+fn get_odds_for_game_html_test() {
+    let contents = fs::read_to_string("./test-data/game-page-for-odds.html");
+    let odds = get_odds_for_game_html(contents.unwrap());
+    assert_eq!(odds.away_team, "phx");
+    assert_eq!(odds.home_team, "tor");
+    assert_eq!(odds.away_spread, "-4.0");
+    assert_eq!(odds.home_spread, "+4");
+    assert_eq!(odds.away_moneyline, "-180");
+    assert_eq!(odds.home_moneyline, "+155");
+    assert_eq!(odds.over_under, "223.0");
+}
 
 async fn get_previous_results(team_code: String) -> Vec<GameResult> {
     let team_page_html = reqwest::get(format!("https://www.espn.com/nba/team/_/name/{}", team_code)).await.unwrap().text().await;
@@ -161,6 +223,18 @@ enum HomeOrAway {
     home,
     away,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GameOdds {
+    home_team: String,
+    away_team: String,
+    home_spread: String,
+    away_spread: String,
+    home_moneyline: String,
+    away_moneyline: String,
+    over_under: String
+}
+
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TeamBox {
@@ -290,6 +364,21 @@ pub struct GameResult {
     box_score_link: String
 }
 
+fn get_upcoming_game_id_from_html(team_page_html: String) -> String {
+    let fragment = Html::parse_fragment(&team_page_html);
+    let upcoming_selector = Selector::parse("section.club-schedule ul ul li a.upcoming").unwrap();
+    let upcoming = fragment.select(&upcoming_selector).next();
+    let a = upcoming.unwrap();
+    return a.value().attr("href").unwrap().split("/").collect::<Vec<&str>>()[5].to_string();
+}
+
+#[test]
+fn get_upcoming_game_id_test() {
+    let contents = fs::read_to_string("./test-data/okc-home-page-upcoming-game-id.html");
+    assert_eq!(get_upcoming_game_id_from_html(contents.unwrap()), "401360431");
+
+}
+
 fn get_upcoming_opponent_team_code(html: String) -> String {
     let fragment = Html::parse_fragment(&html);
     let upcoming_selector = Selector::parse("section.club-schedule ul ul li a.upcoming div.logo img").unwrap();
@@ -379,7 +468,7 @@ fn get_first_text_value(parent_element: ElementRef, selector: &Selector) -> Stri
     let vec = parent_element.select(&selector).next().unwrap().text().collect::<Vec<_>>();
     return match vec.len() {
         0 => "".to_string(),
-        _=> vec[0].to_string()
+        _=> vec[0].to_string().trim().to_string()
     };
 }
 
