@@ -109,7 +109,7 @@ fn get_previous_results_from_team_page_html(html: String) -> Vec<GameResult> {
             opponent: get_first_text_value(a, &Selector::parse("div.game-info").unwrap()),
             score: get_first_text_value(a, &Selector::parse("div.game-meta .score").unwrap()),
             result: get_first_text_value(a, &Selector::parse("div.game-meta .game-result").unwrap()),
-            box_score_link: format!("https://www.espn.com{}", a.value().attr("href").unwrap().to_string())
+            box_score_link: format!("https://www.espn.com{}", a.value().attr("href").unwrap().to_string().replace("/game/", "/boxscore/"))
         });
         if game_results.len() == 5 {
             break;
@@ -126,7 +126,7 @@ fn get_previous_games_test() {
     assert_eq!(previous_games[0].opponent, "@  Trail Blazers");
     assert_eq!(previous_games[0].score, "114-108");
     assert_eq!(previous_games[0].result, "L");
-    assert_eq!(previous_games[0].box_score_link, "https://www.espn.com/nba/game/_/gameId/401401133");
+    assert_eq!(previous_games[0].box_score_link, "https://www.espn.com/nba/boxscore/_/gameId/401401133");
     assert_eq!(previous_games.len(), 5);
 }
 
