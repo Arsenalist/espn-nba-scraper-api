@@ -78,7 +78,10 @@ async fn get_probable_lineups(team_code: String) -> Json<Value> {
     return Json(json!({
         "team": team_probable_lineup,
         "opponent": opponent_team_probable_lineup,
-        "odds": game_odds
+        "odds": match game_odds.is_none() {
+            true => None,
+            false => Some(game_odds.unwrap())
+        }
     }));
 
 }
@@ -106,14 +109,18 @@ fn get_team_code_from_logo_url(logo_url: String) -> String {
     return logo_url.split("500/").collect::<Vec<&str>>()[1].to_string().split(".png").collect::<Vec<&str>>()[0].to_string();
 }
 
-async fn get_odds_for_game(game_id: String) -> GameOdds {
+async fn get_odds_for_game(game_id: String) -> Option<GameOdds> {
     let game_page_html = reqwest::get(format!("https://www.espn.com/nba/game/_/gameId/{}", game_id)).await.unwrap().text().await;
     return get_odds_for_game_html(game_page_html.unwrap());
 }
 
-fn get_odds_for_game_html(html: String) -> GameOdds {
+fn get_odds_for_game_html(html: String) -> Option<GameOdds> {
     let fragment = Html::parse_fragment(&html);
-    let away_team = get_team_code_from_logo_url(fragment.select(&Selector::parse("th.team:first-child .img-container img").unwrap()).next().unwrap().value().attr("src").unwrap().to_string());
+    let away_img_option = fragment.select(&Selector::parse("th.team:first-child .img-container img").unwrap()).next();
+    if away_img_option.is_none() {
+        return None;
+    }
+    let away_team = get_team_code_from_logo_url(away_img_option.unwrap().value().attr("src").unwrap().to_string());
     let home_team = get_team_code_from_logo_url(fragment.select(&Selector::parse("th.team:last-child .img-container img").unwrap()).next().unwrap().value().attr("src").unwrap().to_string());
 
     let x = &Selector::parse(".pick-center-content table.smallTable tbody tr:not([data-type])").unwrap();
@@ -141,13 +148,13 @@ fn get_odds_for_game_html(html: String) -> GameOdds {
     if !over_under.is_none() {
         game_odds.over_under = get_first_text_value(over_under.unwrap(), &Selector::parse(".score span:last-child").unwrap());
     }
-    return game_odds;
+    return Option::Some(game_odds);
 }
 
 #[test]
 fn get_odds_for_game_html_test() {
     let contents = fs::read_to_string("./test-data/game-page-for-odds.html");
-    let odds = get_odds_for_game_html(contents.unwrap());
+    let odds = get_odds_for_game_html(contents.unwrap()).unwrap();
     assert_eq!(odds.away_team, "phx");
     assert_eq!(odds.home_team, "tor");
     assert_eq!(odds.away_spread, "-4.0");
@@ -155,6 +162,13 @@ fn get_odds_for_game_html_test() {
     assert_eq!(odds.away_moneyline, "-180");
     assert_eq!(odds.home_moneyline, "+155");
     assert_eq!(odds.over_under, "223.0");
+}
+
+#[test]
+fn get_odds_for_game_html_when_no_odds_present_test() {
+    let contents = fs::read_to_string("./test-data/game-page-for-odds-not-found.html");
+    let odds = get_odds_for_game_html(contents.unwrap());
+    assert_eq!(odds.is_none(), true);
 }
 
 async fn get_previous_results(team_code: String) -> Vec<GameResult> {
