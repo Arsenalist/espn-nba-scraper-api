@@ -521,7 +521,7 @@ fn get_latest_game_box(html: &String, home_or_away: HomeOrAway) -> TeamBox {
     let tbodys = fragment.select(&table_selector).next().unwrap();
     let mut player_lines: Vec<Player> = vec![];
 
-
+    let mut player_count = 0;
     for tr in tbodys.select(&tr_selector) {
         let mut player = PlayerBoxScore {
             starter: false,
@@ -550,7 +550,6 @@ fn get_latest_game_box(html: &String, home_or_away: HomeOrAway) -> TeamBox {
         };
         let mut player_id = String::new();
         let mut valid_row = false;
-        let mut player_count = 0;
         for td in tr.select(&td_selector) {
             let name = td.value().attr("class").unwrap();
             let td_contents = td.text().collect::<Vec<_>>();
