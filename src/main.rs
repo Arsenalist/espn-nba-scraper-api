@@ -60,17 +60,33 @@ async fn get_probable_lineups(team_code: String) -> Json<Value> {
 
     let game_odds = get_odds_for_game(get_upcoming_game_id_from_html(team_page_html.to_string())).await;
 
+    let mut option = injuries.to_owned().into_iter().find(|tij| tij.team_code == team_code);
     let team_probable_lineup = ProbableLineup {
         team_code: team_code.to_owned(),
         lineup_by_position: probable_lineups(&team_box_score.player_records),
-        injury_report: injuries.to_owned().into_iter().find(|tij| tij.team_code == team_code).unwrap(),
+        injury_report: match option {
+            None => TeamInjuryReport {
+                team_code: team_code.to_string(),
+                team_name: team_code.to_string(),
+                injuries: vec![]
+            },
+            _ => option.unwrap()
+        },
         previous_results: get_previous_results(team_code).await
     };
 
+    let mut option = injuries.to_owned().into_iter().find(|tij| tij.team_code == opponent_team_code);
     let opponent_team_probable_lineup = ProbableLineup {
         team_code: opponent_team_code.to_owned(),
         lineup_by_position: probable_lineups(&opponent_team_box_score.player_records),
-        injury_report: injuries.to_owned().into_iter().find(|tij| tij.team_code == opponent_team_code).unwrap(),
+        injury_report: match option {
+            None => TeamInjuryReport {
+                team_code: opponent_team_code.to_string(),
+                team_name: opponent_team_code.to_string(),
+                injuries: vec![]
+            },
+            _ => option.unwrap()
+        },
         previous_results: get_previous_results(opponent_team_code).await
     };
 
