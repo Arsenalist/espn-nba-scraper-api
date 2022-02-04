@@ -84,8 +84,7 @@ async fn get_probable_lineups(team_code: String) -> Json<Value> {
                 team_code: opponent_team_code.to_string(),
                 team_name: opponent_team_code.to_string(),
                 injuries: vec![]
-            },
-            _ => option.unwrap()
+            },            _ => option.unwrap()
         },
         previous_results: get_previous_results(opponent_team_code).await
     };
@@ -104,7 +103,7 @@ async fn get_probable_lineups(team_code: String) -> Json<Value> {
 
 async fn get_team_box_score(team_code: &str) -> TeamBox {
     let team_page_html = reqwest::get(format!("https://www.espn.com/nba/team/_/name/{}", team_code)).await.unwrap().text().await.unwrap();
-    let latest_game_id = get_latest_game_id(team_page_html); // 401307777
+    let latest_game_id =  "401360609".to_string(); // get_latest_game_id(team_page_html); // 401307777
     let boxscore_page_html = reqwest::get(format!("https://www.espn.com/nba/boxscore/_/gameId/{}", latest_game_id)).await.unwrap().text().await.unwrap();
     let team_box = get_latest_game_box(&boxscore_page_html, get_orientation(&boxscore_page_html, team_code));
     team_box
