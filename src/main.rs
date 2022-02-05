@@ -195,12 +195,13 @@ async fn get_previous_results(team_code: String) -> Vec<GameResult> {
 fn get_previous_results_from_team_page_html(html: String) -> Vec<GameResult> {
     let fragment = Html::parse_fragment(&html);
     let mut game_results = Vec::new();
-    for a in fragment.select(&Selector::parse("section.club-schedule ul ul li a:not(.upcoming)").unwrap()) {
+    for a in fragment.select(&Selector::parse("a.Schedule__Game--post").unwrap()) {
         game_results.push(GameResult {
-            opponent: get_first_text_value(a, &Selector::parse("div.game-info").unwrap()),
-            score: get_first_text_value(a, &Selector::parse("div.game-meta .score").unwrap()),
-            result: get_first_text_value(a, &Selector::parse("div.game-meta .game-result").unwrap()),
-            box_score_link: format!("https://www.espn.com{}", a.value().attr("href").unwrap().to_string().replace("/game/", "/boxscore/"))
+            opponent: get_first_text_value(a, &Selector::parse("span.Schedule__Team").unwrap()),
+            score: get_first_text_value(a, &Selector::parse("span.Schedule__Score").unwrap()),
+            atVs: get_first_text_value(a, &Selector::parse("span.Schedule_atVs").unwrap()),
+            result: get_first_text_value(a, &Selector::parse("span.Schedule__Result").unwrap()),
+            box_score_link: a.value().attr("href").unwrap().to_string().replace("/game/", "/boxscore/")
         });
         if game_results.len() == 5 {
             break;
@@ -214,10 +215,11 @@ fn get_previous_results_from_team_page_html(html: String) -> Vec<GameResult> {
 fn get_previous_games_test() {
     let contents = fs::read_to_string("./test-data/brooklyn-home-page-for-previous-games.html");
     let previous_games = get_previous_results_from_team_page_html(contents.unwrap());
-    assert_eq!(previous_games[0].opponent, "@  Trail Blazers");
-    assert_eq!(previous_games[0].score, "114-108");
+    assert_eq!(previous_games[0].opponent, "Jazz");
+    assert_eq!(previous_games[0].score, "125-102");
     assert_eq!(previous_games[0].result, "L");
-    assert_eq!(previous_games[0].box_score_link, "https://www.espn.com/nba/boxscore/_/gameId/401401133");
+    assert_eq!(previous_games[0].atVs, "@");
+    assert_eq!(previous_games[0].box_score_link, "http://www.espn.com/nba/boxscore/_/gameId/401360612");
     assert_eq!(previous_games.len(), 5);
 }
 
@@ -390,7 +392,8 @@ pub struct GameResult {
     opponent: String,
     result: String,
     score: String,
-    box_score_link: String
+    box_score_link: String,
+    atVs: String
 }
 
 fn get_upcoming_game_id_from_html(team_page_html: String) -> String {
