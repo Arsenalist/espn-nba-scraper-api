@@ -408,7 +408,7 @@ fn get_upcoming_game_id_test() {
 
 }
 
-fn team_mapping() -> HashMap<&'static str, &'static str, RandomState> {
+fn team_mapping() -> HashMap<&'static str, &'static str> {
     let mut map = HashMap::new();
     map.insert("Celtics", "bos");
     map.insert("Nets", "bkn");
