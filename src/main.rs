@@ -60,7 +60,7 @@ async fn get_probable_lineups(team_code: String) -> Json<Value> {
 
     let game_odds = get_odds_for_game(get_upcoming_game_id_from_html(team_page_html.to_string())).await;
 
-    let mut option = injuries.to_owned().into_iter().find(|tij| tij.team_code == team_code);
+    let option = injuries.to_owned().into_iter().find(|tij| tij.team_code == team_code);
     let team_probable_lineup = ProbableLineup {
         team_code: team_code.to_owned(),
         lineup_by_position: probable_lineups(&team_box_score.player_records),
@@ -75,7 +75,7 @@ async fn get_probable_lineups(team_code: String) -> Json<Value> {
         previous_results: get_previous_results(team_code).await
     };
 
-    let mut option = injuries.to_owned().into_iter().find(|tij| tij.team_code == opponent_team_code);
+    let option = injuries.to_owned().into_iter().find(|tij| tij.team_code == opponent_team_code);
     let opponent_team_probable_lineup = ProbableLineup {
         team_code: opponent_team_code.to_owned(),
         lineup_by_position: probable_lineups(&opponent_team_box_score.player_records),
@@ -103,7 +103,7 @@ async fn get_probable_lineups(team_code: String) -> Json<Value> {
 
 async fn get_team_box_score(team_code: &str) -> TeamBox {
     let team_page_html = reqwest::get(format!("https://www.espn.com/nba/team/_/name/{}", team_code)).await.unwrap().text().await.unwrap();
-    let latest_game_id =  "401360609".to_string(); // get_latest_game_id(team_page_html); // 401307777
+    let latest_game_id =  get_latest_game_id(team_page_html); // 401307777
     let boxscore_page_html = reqwest::get(format!("https://www.espn.com/nba/boxscore/_/gameId/{}", latest_game_id)).await.unwrap().text().await.unwrap();
     let team_box = get_latest_game_box(&boxscore_page_html, get_orientation(&boxscore_page_html, team_code));
     team_box
@@ -395,30 +395,68 @@ pub struct GameResult {
 
 fn get_upcoming_game_id_from_html(team_page_html: String) -> String {
     let fragment = Html::parse_fragment(&team_page_html);
-    let upcoming_selector = Selector::parse("section.club-schedule ul ul li a.upcoming").unwrap();
+    let upcoming_selector = Selector::parse("a.Schedule__Game--pre").unwrap();
     let upcoming = fragment.select(&upcoming_selector).next();
     let a = upcoming.unwrap();
-    return a.value().attr("href").unwrap().split("/").collect::<Vec<&str>>()[5].to_string();
+    return a.value().attr("href").unwrap().split("/").collect::<Vec<&str>>()[7].to_string();
 }
 
 #[test]
 fn get_upcoming_game_id_test() {
     let contents = fs::read_to_string("./test-data/okc-home-page-upcoming-game-id.html");
-    assert_eq!(get_upcoming_game_id_from_html(contents.unwrap()), "401360431");
+    assert_eq!(get_upcoming_game_id_from_html(contents.unwrap()), "401360620");
 
 }
+
+fn team_mapping() -> HashMap<&'static str, &'static str, RandomState> {
+    let mut map = HashMap::new();
+    map.insert("Celtics", "bos");
+    map.insert("Nets", "bkn");
+    map.insert("Knicks", "ny");
+    map.insert("76ers", "phi");
+    map.insert("Raptors", "tor");
+    map.insert("Bulls", "tor");
+    map.insert("Cavaliers", "cle");
+    map.insert("Pistons", "det");
+    map.insert("Pacers", "ind");
+    map.insert("Bucks", "mil");
+    map.insert("Hawks", "atl");
+    map.insert("Hornets", "cha");
+    map.insert("Heat", "mia");
+    map.insert("Magic", "orl");
+    map.insert("Wizards", "was");
+    map.insert("Warriors", "gs");
+    map.insert("Clippers", "lac");
+    map.insert("Lakers", "lal");
+    map.insert("Suns", "phx");
+    map.insert("Kings", "sac");
+    map.insert("Nuggets", "den");
+    map.insert("Timberwolves", "min");
+    map.insert("Thunder", "okc");
+    map.insert("Trail Blazers", "por");
+    map.insert("Jazz", "uta");
+    map.insert("Mavericks", "dal");
+    map.insert("Rockets", "hou");
+    map.insert("Grizzlies", "mem");
+    map.insert("Pelicans", "no");
+    map.insert("Spurs", "sa");
+    return map;
+
+}
+
 
 fn get_upcoming_opponent_team_code(html: String) -> String {
     let fragment = Html::parse_fragment(&html);
-    let upcoming_selector = Selector::parse("section.club-schedule ul ul li a.upcoming div.logo img").unwrap();
+    let upcoming_selector = Selector::parse("a.Schedule__Game--pre span.Schedule__Team").unwrap();
     let upcoming = fragment.select(&upcoming_selector).next();
-    let a = upcoming.unwrap();
-    return a.value().attr("src").unwrap().split("/").collect::<Vec<&str>>()[10].to_string().split(".").collect::<Vec<&str>>()[0].to_string();
+    let a = upcoming.unwrap().inner_html();
+    let map = team_mapping();
+    return map.get(&*a).unwrap().to_string();
 }
 
 fn get_latest_game_id(html: String) -> String {
+    let last_completed_selector = Selector::parse("a.Schedule__Game--post").unwrap();
     let fragment = Html::parse_fragment(&html);
-    let last_completed_selector = Selector::parse("section.club-schedule ul ul li a:not(.upcoming)").unwrap();
     let live_selector = Selector::parse("section.club-schedule ul ul li a[rel=nbagamecast]").unwrap();
     let completed = fragment.select(&last_completed_selector).next();
     let live = fragment.select(&live_selector).next();
@@ -432,7 +470,7 @@ fn get_latest_game_id(html: String) -> String {
     let is_game_live = href.contains("=");
     return match is_game_live {
         true => a.value().attr("href").unwrap().split("=").collect::<Vec<&str>>()[1].to_string(),
-        false => a.value().attr("href").unwrap().split("/").collect::<Vec<&str>>()[5].to_string()
+        false => a.value().attr("href").unwrap().split("/").collect::<Vec<&str>>()[7].to_string()
     };
 }
 
@@ -662,7 +700,7 @@ fn get_teams_test() {
 #[test]
 fn get_latest_game_id_game_over_test() {
     let contents = fs::read_to_string("./test-data/team-page-game-over.html");
-    assert_eq!(get_latest_game_id(contents.unwrap()), String::from("401365914"));
+    assert_eq!(get_latest_game_id(contents.unwrap()), String::from("401360609"));
 }
 
 #[test]
@@ -731,7 +769,7 @@ fn get_orientation_away_test() {
 #[test]
 fn get_upcoming_opponent_team_code_test() {
     let contents = fs::read_to_string("./test-data/raptors-team-page-upcoming-opponent.html");
-    assert_eq!(get_upcoming_opponent_team_code(contents.unwrap()).to_string(), "no".to_string());
+    assert_eq!(get_upcoming_opponent_team_code(contents.unwrap()).to_string(), "atl".to_string());
 }
 
 
