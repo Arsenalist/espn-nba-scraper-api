@@ -460,7 +460,7 @@ fn get_upcoming_opponent_team_code(html: String) -> String {
 fn get_latest_game_id(html: String) -> String {
     let last_completed_selector = Selector::parse("a.Schedule__Game--post").unwrap();
     let fragment = Html::parse_fragment(&html);
-    let live_selector = Selector::parse("section.club-schedule ul ul li a[rel=nbagamecast]").unwrap();
+    let live_selector = Selector::parse("a.Schedule__Game--in").unwrap();
     let completed = fragment.select(&last_completed_selector).next();
     let live = fragment.select(&live_selector).next();
     let a;
@@ -709,7 +709,7 @@ fn get_latest_game_id_game_over_test() {
 #[test]
 fn get_latest_game_id_live_game_test() {
     let contents = fs::read_to_string("./test-data/team-page-live-game.html");
-    assert_eq!(get_latest_game_id(contents.unwrap()), String::from("401365915"));
+    assert_eq!(get_latest_game_id(contents.unwrap()), String::from("401360629"));
 }
 
 #[test]
