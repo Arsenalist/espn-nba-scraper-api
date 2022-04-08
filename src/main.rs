@@ -875,7 +875,7 @@ fn injuries(html: String) -> Vec<TeamInjuryReport> {
                 date: get_first_text_value(row, &Selector::parse("td.col-date").unwrap()),
                 position: get_first_text_value(row, &Selector::parse("td.col-pos").unwrap()),
                 status: get_first_text_value(row, &Selector::parse("td.col-stat span").unwrap()),
-                description: get_first_text_value(row, &Selector::parse("td.col-desc").unwrap()).replace("Blake Murphy of The Athletic", "Blake Murphy of Sportsnet")
+                description: get_first_text_value(row, &Selector::parse("td.col-desc").unwrap()).replace("Blake Murphy of The Athletic", "Blake Murphy of SportsNet")
             });
         };
         team_injury_reports.push(team_injury_report);
